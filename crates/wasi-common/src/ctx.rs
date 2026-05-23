@@ -28,6 +28,12 @@ pub struct WasiCtxInner {
     pub clocks: WasiClocks,
     pub sched: Box<dyn WasiSched>,
     pub table: Table,
+    /// Optional host-provided suggested cwd. Embedders set this via
+    /// `WasiCtxBuilder::cwd_hint(&str)`; guests read it via the
+    /// `cwd_get_suggested` Preview 1 hostcall. Read-only after
+    /// construction, embedder-controlled, no implicit authority — the
+    /// bytes are advisory, backend preopens are unchanged.
+    pub cwd_hint: Option<String>,
 }
 
 impl WasiCtx {
@@ -44,6 +50,7 @@ impl WasiCtx {
             clocks,
             sched,
             table,
+            cwd_hint: None,
         }));
         s.set_stdin(Box::new(crate::pipe::ReadPipe::new(std::io::empty())));
         s.set_stdout(Box::new(crate::pipe::WritePipe::new(std::io::sink())));
@@ -95,6 +102,17 @@ impl WasiCtx {
         );
         s.env.push(format!("{var}={value}"))?;
         Ok(())
+    }
+
+    /// Set the host-provided suggested cwd reported to guests through the
+    /// `cwd_get_suggested` Preview 1 hostcall. Setting `None` (the default)
+    /// causes the hostcall to return `errno::nosys`, preserving the existing
+    /// guest fallback path (typically `getcwd(3) -> "/"`).
+    pub fn set_cwd_hint(&mut self, hint: Option<String>) {
+        let s = Arc::get_mut(&mut self.0).expect(
+            "`set_cwd_hint` should only be used during initialization before the context is cloned",
+        );
+        s.cwd_hint = hint;
     }
 
     pub fn set_stdin(&self, f: Box<dyn WasiFile>) {
