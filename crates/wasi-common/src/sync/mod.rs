@@ -77,6 +77,14 @@ impl WasiCtxBuilder {
         }
         Ok(self)
     }
+    /// Set the host-provided suggested cwd hint reported to guests via the
+    /// `cwd_get_suggested` Preview 1 hostcall. Leaving the hint unset (the
+    /// default) causes the hostcall to return `errno::nosys`, preserving the
+    /// existing guest fallback path.
+    pub fn cwd_hint(&mut self, hint: impl Into<String>) -> &mut Self {
+        self.ctx.set_cwd_hint(Some(hint.into()));
+        self
+    }
     pub fn stdin(&mut self, f: Box<dyn WasiFile>) -> &mut Self {
         self.ctx.set_stdin(f);
         self

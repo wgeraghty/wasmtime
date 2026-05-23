@@ -1,0 +1,82 @@
+name: cwd-hint
+
+# CI for the cwd-hint experimental branch. This is a reference
+# implementation of the `cwd_get_suggested` Preview 1 hostcall proposed in
+# https://github.com/WebAssembly/WASI/issues/771.
+#
+# Scoped to the `cwd-hint` branch + manual dispatch so it does not fire on
+# every push to the fork; the upstream CI matrix is large enough that we
+# don't want to burn runner minutes on irrelevant pushes here.
+
+on:
+  push:
+    branches: [cwd-hint]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    name: Proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - uses: ./.github/actions/install-rust
+
+    # `install-rust` writes `RUSTFLAGS="-D warnings ..."` into `$GITHUB_ENV`
+    # for the main CI matrix, which runs on a pinned-nightly toolchain. On
+    # the default stable toolchain that this workflow uses, that same flag
+    # promotes newer stable lints to errors in *upstream* code that the
+    # pinned-nightly snapshot pre-dates (notably
+    # `clippy::allow_attributes_without_reason` triggered in Cranelift).
+    # Clear it so the gate here is "wasi-common itself builds, lints,
+    # tests, and the proof example runs," not "the entire transitive dep
+    # graph is warning-free under a toolchain snapshot upstream doesn't
+    # test against." This must run after `install-rust` because the
+    # action's `$GITHUB_ENV` write happens between steps and would
+    # otherwise overwrite a job-level `env:` block.
+    - run: echo 'RUSTFLAGS=' >> "$GITHUB_ENV"
+
+    # `install-rust` pins the toolchain but installs no extras. Each
+    # consumer adds the components and targets it needs; the upstream
+    # `Rustfmt` and `clippy` jobs install their components the same way.
+    - run: rustup component add rustfmt clippy
+
+    # The wasi-common test crate transitively pulls
+    # `test-programs-artifacts`, whose build.rs compiles guest test binaries
+    # for `wasm32-wasip1` and the Preview 1 component adapters for
+    # `wasm32-unknown-unknown`. Both targets are needed before any cargo
+    # command that triggers the build script.
+    - run: rustup target add wasm32-wasip1 wasm32-unknown-unknown
+
+    - run: cargo fmt -p wasi-common -- --check
+
+    # Upstream wasi-common has a pre-existing `useless_conversion` warning
+    # in sched/unix.rs that predates this branch; the gate is "clippy
+    # builds", not "warning count is zero".
+    - run: cargo clippy -p wasi-common --all-targets
+
+    - run: cargo build -p wasi-common --all-features
+
+    - run: cargo test -p wasi-common --all-features
+
+    - name: Run cwd_hint_proof example
+      run: |
+        cargo run --example cwd_hint_proof --features run | tee /tmp/proof.out
+        grep -q "round-trip + backward-compat: PASS" /tmp/proof.out
+
+    - uses: actions/upload-artifact@v6
+      if: always()
+      with:
+        name: cwd_hint_proof-stdout
+        path: /tmp/proof.out

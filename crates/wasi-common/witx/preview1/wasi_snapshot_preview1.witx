@@ -518,4 +518,31 @@
     (param $how $sdflags)
     (result $error (expected (error $errno)))
   )
+
+  ;;; Get the host-suggested current working directory hint.
+  ;;;
+  ;;; Returns an advisory UTF-8 path the guest's libc may use as the
+  ;;; initial value of `getcwd(3)`. The hint carries no authority of its
+  ;;; own: the runtime's preopen tree is unchanged, and the hint does
+  ;;; not grant access to any path. Guests should treat it as the
+  ;;; embedder's stated intent ("you were launched here"), not as a
+  ;;; capability.
+  ;;;
+  ;;; If no hint is configured, returns `errno::nosys`. Guests that
+  ;;; receive `nosys` should fall back to whatever they would do today
+  ;;; (typically `"/"`), preserving full backward compatibility with
+  ;;; embedders that don't set a hint.
+  ;;;
+  ;;; The host writes up to `buf_len` bytes of the hint into `buf` and
+  ;;; returns the number of bytes actually written. Like
+  ;;; `path_readlink`, the hint is silently truncated if it is larger
+  ;;; than the destination buffer.
+  (@interface func (export "cwd_get_suggested")
+    ;;; Buffer to receive the hint path.
+    (param $buf (@witx pointer u8))
+    ;;; The capacity of `buf`, in bytes.
+    (param $buf_len $size)
+    ;;; The number of bytes actually written into `buf`, or an error.
+    (result $error (expected $size (error $errno)))
+  )
 )

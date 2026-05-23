@@ -1303,6 +1303,23 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiCtx {
 
         f.file.sock_shutdown(SdFlags::from(how)).await
     }
+
+    async fn cwd_get_suggested(
+        &mut self,
+        memory: &mut GuestMemory<'_>,
+        buf: GuestPtr<u8>,
+        buf_len: types::Size,
+    ) -> Result<types::Size, Error> {
+        let hint = match self.cwd_hint.as_deref() {
+            Some(h) => h,
+            None => return Err(types::Errno::Nosys.into()),
+        };
+        let hint_bytes = hint.as_bytes();
+        let copy_len = std::cmp::min(hint_bytes.len(), buf_len as usize);
+        let dest = buf.as_array(copy_len as u32);
+        memory.copy_from_slice(&hint_bytes[..copy_len], dest)?;
+        Ok(copy_len as types::Size)
+    }
 }
 
 impl From<types::Advice> for Advice {

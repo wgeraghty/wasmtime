@@ -642,6 +642,10 @@ harness = false
 name = "tokio"
 required-features = ["wasi-common/tokio"]
 
+[[example]]
+name = "cwd_hint_proof"
+required-features = ["run"]
+
 [[bench]]
 name = "compile"
 harness = false
